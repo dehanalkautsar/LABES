@@ -3,6 +3,7 @@
 """
 import numpy as np
 import os, csv, random, logging, json, pickle
+from gensim.models import KeyedVectors
 from datasets import CamRest676, Kvret, Multiwoz
 from config import global_config as cfg
 from vocab import Vocab
@@ -301,6 +302,44 @@ class _ReaderBase:
             cnt, old_avg, new_avg, old_std, new_std))
         return vec_array
 
+    def get_fasttext_matrix(self, fasttext_path, initial_embedding_np):
+        """
+        return a fasttext embedding matrix
+        :param self:
+        :param fasttext_path:
+        :param initial_embedding_np:
+        :return: np array of [V,E]
+        """
+
+        cnt = 0
+        vec_array = initial_embedding_np
+        old_avg = np.average(vec_array)
+        old_std = np.std(vec_array)
+        vec_array = vec_array.astype(np.float32)
+        new_avg, new_std = 0, 0
+
+        if 'fasttext' in fasttext_path:
+            ef = KeyedVectors.load_word2vec_format(fasttext_path)
+            for vcb in ef.vocab:
+                word, vec = vcb, ef[vcb]
+                vec = np.array(vec, np.float32)
+                if not self.vocab.has_word(word):
+                    continue
+                word_idx = self.vocab.encode(word)
+                if word_idx <self.vocab.vocab_size:
+                    cnt += 1
+                    vec_array[word_idx] = vec
+                    new_avg += np.average(vec)
+                    new_std += np.std(vec)
+            new_avg /= cnt
+            new_std /= cnt
+        else:
+            raise Exception(f"There is no fastText vectors in directory: {fasttext_path}")
+
+        logging.info('%d known embedding. old mean: %f new mean %f, old std %f new std %f' % (
+            cnt, old_avg, new_avg, old_std, new_std))
+        return vec_array
+
     def cons_dict_to_indicator(self, constraint):
         indicator = []
         for k in self.otlg.informable_slots:
@@ -343,16 +382,41 @@ class CamRest676Reader(_ReaderBase):
         """
         construct encoded train, dev, test set.
         """
-        vocab_path = cfg.dataset_path + 'vocab.word2idx.json'
-        if not os.path.exists(self.dataset.data_path) or not os.path.exists(vocab_path):
-            self.data = self.dataset.preprocess_data()
-        else:
-            self.data = json.loads(open(self.dataset.data_path, 'r', encoding='utf-8').read().lower())
+        cnt_total_dialogue = 0
+        vocab_path = cfg.vocab_path + '.word2idx.json'
+        # case if there is no word2idx file
+        if not os.path.exists(vocab_path):
+            temp_data = self.dataset.preprocess_data()
         self.vocab.load_vocab(cfg.vocab_path)
 
-        encoded_data = self._get_encoded_data(self.data)
-        self.train, self.dev, self.test = self._split_data(encoded_data, cfg.split)
+        train, dev, test = {}, {}, {}
+        for file in self.dataset.data_path:
+            if not os.path.exists(file):
+                temp_data = self.dataset.preprocess_data()
+            else:
+                temp_data = json.loads(open(file, 'r', encoding='utf-8').read().lower())
+
+            data = {}
+            # update dialogue id bcs of dataset merging
+            for (k,v) in temp_data.items():
+                data.update({str(int(k)+cnt_total_dialogue):v})
+            cnt_total_dialogue += len(data)
+            tr, de, te = self._split_data(data, cfg.split)
+            for (k,v) in tr.items():
+                train.update({k:v})
+            for (k,v) in de.items():
+                dev.update({k:v})
+            for (k,v) in te.items():
+                test.update({k:v})
+
+        # encode data
+        self.train = self._get_encoded_data(train)
+        self.dev = self._get_encoded_data(dev)
+        self.test = self._get_encoded_data(test)
+        print('train size:{}, dev size:{}, test size:{}'.format(len(self.train), len(self.dev), len(self.test)))
+        
         random.shuffle(self.train)
+
         self.train_batch = self._construct_batches(self.train, 'train', cfg.batch_size)
         self.dev_batch = self._construct_batches(self.dev, 'dev', cfg.batch_size)
         self.test_batch = self._construct_batches(self.test, 'test', cfg.batch_size)
@@ -410,10 +474,22 @@ class CamRest676Reader(_ReaderBase):
         :param split: tuple / list
         :return:
         """
+        # total = sum(split)
+        # dev_thr = len(encoded_data) * split[0] // total
+        # test_thr = len(encoded_data) * (split[0] + split[1]) // total
+        # train, dev, test = encoded_data[:dev_thr], encoded_data[dev_thr:test_thr], encoded_data[test_thr:]
+        # return train, dev, test
         total = sum(split)
         dev_thr = len(encoded_data) * split[0] // total
         test_thr = len(encoded_data) * (split[0] + split[1]) // total
-        train, dev, test = encoded_data[:dev_thr], encoded_data[dev_thr:test_thr], encoded_data[test_thr:]
+        train, dev, test = {}, {}, {}
+        for i, (k, v) in enumerate(encoded_data.items()):
+            if i < dev_thr:
+                train[k] = v
+            elif dev_thr <= i < test_thr:
+                dev[k] = v
+            else:
+                test[k] = v
         return train, dev, test
 
     def save_result_report(self, results, ctr_save_path=None):

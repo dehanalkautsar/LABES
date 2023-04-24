@@ -25,10 +25,12 @@ class CamRest676(Dataset):
         self.requestable_slots = self.otlg.requestable_slots
         self.informable_slots = self.otlg.informable_slots
 
-        self.data_path = os.path.join(self.dataset_path,
-            # 'CamRest676_preprocessed_add_dontcare_330.json')
-            # 'CamRest676_preprocessed_add_dontcare_41.json')
-            'CamRest676_preprocessed_add_request_47.json')
+        self.data_path = []
+        for path in self.dataset_path:
+            self.data_path.extend([os.path.join(path,
+                # 'CamRest676_preprocessed_add_dontcare_330.json')
+                # 'CamRest676_preprocessed_add_dontcare_41.json')
+                'CamRest676_preprocessed_add_request_47.json')])
 
         db_json_path = cfg.db.replace('.db', '.json')
         self.db_json = json.loads(open(db_json_path).read().lower())
@@ -52,65 +54,66 @@ class CamRest676(Dataset):
 
     def preprocess_data(self):
         print('Preprocessing data')
-        raw_data = json.loads(open(self.raw_data_path).read().lower())
-        db_data = self.db_json
-        sw_ent, mw_ent = self._value_key_map(db_data)
-        vocab = Vocab(cfg.vocab_size, self.otlg.special_tokens)
-        # delexicalization
-        dialogs = {}
-        for dial_id, dial in enumerate(raw_data):
-            dialogs[dial_id] = {}
-            dialogs[dial_id]['goal'] = dial['goal']
-            turns = []
-            for turn in dial['dial']:
-                turn_num = turn['turn']
-                constraint = dict((slot, []) for slot in self.informable_slots)
-                constraint_flat, user_request, sys_request = [], [], []
-                for slot_values in turn['usr']['slu']:
-                    if slot_values['act'] == 'inform':
-                        slot, value = slot_values['slots'][0][0], slot_values['slots'][0][1]
-                        slot = 'restaurant-' + slot
-                        if slot != 'restaurant-slot' and value not in ['dontcare', 'none']:
-                            constraint[slot].extend(self.word_tokenize(value))
-                            constraint_flat.extend(self.word_tokenize(value))
-                        if value == 'dontcare':
-                            constraint[slot].extend(['dontcare'])
-                            constraint_flat.extend(['dontcare'])
-                    elif slot_values['act'] == 'request':
-                        user_request.append('[value_%s]'%slot_values['slots'][0][1])
-                            # constraint[slot].extend(['do', "n't", 'care'])
-                if turn['sys']['da']:
-                    for s in turn['sys']['da']:
-                        s = ['price', 'range'] if s == 'pricerange' else [s]
-                        if s == [["area, centre"]]:
-                            s = ['area']
-                        sys_request.extend(s)
-                user = self.word_tokenize(turn['usr']['transcript'])
-                resp = ' '.join(self.word_tokenize(turn['sys']['sent']))
-                resp = self._replace_entity(resp, sw_ent, mw_ent, constraint_flat)
-                resp = resp.replace('[value_phone].', '[value_phone] .').replace('ok.', 'ok .')
-                resp = resp.split()
-                # try:
-                turns.append({
-                    'turn': turn_num,
-                    'user': ' '.join(user),
-                    'response': ' '.join(resp),
-                    'constraint': json.dumps(constraint),
-                    'user_request': ' '.join(user_request),
-                    'sys_request': ' '.join(sys_request),
-                    'db_match': len(self.db_json_search(constraint)),
-                })
-                for word in user + resp:
-                    vocab.add_word(word)
-            dialogs[dial_id]['log'] = turns
+        for raw_data_path in self.raw_data_path:
+            raw_data = json.loads(open(raw_data_path).read().lower())
+            db_data = self.db_json
+            sw_ent, mw_ent = self._value_key_map(db_data)
+            vocab = Vocab(cfg.vocab_size, self.otlg.special_tokens)
+            # delexicalization
+            dialogs = {}
+            for dial_id, dial in enumerate(raw_data):
+                dialogs[dial_id] = {}
+                dialogs[dial_id]['goal'] = dial['goal']
+                turns = []
+                for turn in dial['dial']:
+                    turn_num = turn['turn']
+                    constraint = dict((slot, []) for slot in self.informable_slots)
+                    constraint_flat, user_request, sys_request = [], [], []
+                    for slot_values in turn['usr']['slu']:
+                        if slot_values['act'] == 'inform':
+                            slot, value = slot_values['slots'][0][0], slot_values['slots'][0][1]
+                            slot = 'restaurant-' + slot
+                            if slot != 'restaurant-slot' and value not in ['dontcare', 'none']:
+                                constraint[slot].extend(self.word_tokenize(value))
+                                constraint_flat.extend(self.word_tokenize(value))
+                            if value == 'dontcare':
+                                constraint[slot].extend(['dontcare'])
+                                constraint_flat.extend(['dontcare'])
+                        elif slot_values['act'] == 'request':
+                            user_request.append('[value_%s]'%slot_values['slots'][0][1])
+                                # constraint[slot].extend(['do', "n't", 'care'])
+                    if turn['sys']['da']:
+                        for s in turn['sys']['da']:
+                            s = ['price', 'range'] if s == 'pricerange' else [s]
+                            if s == [["area, centre"]]:
+                                s = ['area']
+                            sys_request.extend(s)
+                    user = self.word_tokenize(turn['usr']['transcript'])
+                    resp = ' '.join(self.word_tokenize(turn['sys']['sent']))
+                    resp = self._replace_entity(resp, sw_ent, mw_ent, constraint_flat)
+                    resp = resp.replace('[value_phone].', '[value_phone] .').replace('ok.', 'ok .')
+                    resp = resp.split()
+                    # try:
+                    turns.append({
+                        'turn': turn_num,
+                        'user': ' '.join(user),
+                        'response': ' '.join(resp),
+                        'constraint': json.dumps(constraint),
+                        'user_request': ' '.join(user_request),
+                        'sys_request': ' '.join(sys_request),
+                        'db_match': len(self.db_json_search(constraint)),
+                    })
+                    for word in user + resp:
+                        vocab.add_word(word)
+                dialogs[dial_id]['log'] = turns
 
-        # save preprocessed data
-        with open(self.data_path, 'w') as f:
-            json.dump(dialogs, f, indent=2)
+            # save preprocessed data
+            with open(raw_data_path.replace('CamRest676.json', 'CamRest676_preprocessed_add_request_47.json'), 'w') as f:
+                json.dump(dialogs, f, indent=2)
 
-        # construct vocabulary
-        vocab.construct()
-        vocab.save_vocab(self.dataset_path + 'vocab')
+            # construct vocabulary
+            vocab.construct()
+            vocab.save_vocab(raw_data_path.replace('CamRest676.json', '') + 'vocab')
         return dialogs
 
     def _replace_entity(self, text, single_word_ent, multi_word_ent, constraint):

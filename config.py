@@ -9,13 +9,19 @@ class _Config:
         # self._multiwoz_init()
         pass
 
-    def init_handler(self, m):
-        init_method = {
-            'camrest': self._camrest_init,
-            'kvret': self._kvret_init,
-            'multiwoz': self._multiwoz_init,
-        }
-        init_method[m]()
+    def init_handler(self, m, exp_setting, mode):
+        if m == 'camrest':
+            self._camrest_init(exp_setting, mode)
+        if m == 'kvret':
+            self._kvret_init(exp_setting, mode)
+        if m == 'multiwoz':
+            self._multiwoz_init()
+        # init_method = {
+        #     'camrest': self._camrest_init,
+        #     'kvret': self._kvret_init,
+        #     'multiwoz': self._multiwoz_init,
+        # }
+        # init_method[m]()
 
     def init_logging_handler(self, mode):
         stderr_handler = logging.StreamHandler()
@@ -41,8 +47,9 @@ class _Config:
         logger.setLevel(logging.INFO)
 
 
-    def _camrest_init(self):
+    def _camrest_init(self, exp_setting, mode):
         # experimental settings
+        self.exp_setting = exp_setting
         self.seed = 0
         self.cuda = True
         self.cuda_device = 0
@@ -53,11 +60,48 @@ class _Config:
         self.result_path = 'to be generated'
         self.global_record_path = './camrest_results.csv'
         self.eval_load_path = 'to be generated'
-        self.vocab_path = './data/CamRest676/vocab'
-        self.dataset_path = './data/CamRest676/'
-        self.raw_data = self.dataset_path + 'CamRest676.json'
-        self.ontology_path = self.dataset_path + 'CamRestOTGY.json'
-        self.db = self.dataset_path + 'CamRestDB.db'
+
+        if self.exp_setting == 'en':
+            self.vocab_path = './data/CamRest676/en_camrest/vocab'
+            self.dataset_path = ['./data/CamRest676/en_camrest/']
+            self.ontology_path = './data/CamRest676/en_camrest/CamRestOTGY.json'
+            self.db = './data/CamRest676/en_camrest/CamRestDB.db'
+        elif self.exp_setting == 'id':
+            self.vocab_path = './data/CamRest676/id_camrest/vocab'
+            self.dataset_path = ['./data/CamRest676/id_camrest/']
+            self.ontology_path = './data/CamRest676/id_camrest/CamRestOTGY.json'
+            self.db = './data/CamRest676/id_camrest/CamRestDB.db'
+        elif self.exp_setting == 'cross':
+            self.vocab_path = './data/CamRest676/bi_camrest/vocab'
+            self.ontology_path = './data/CamRest676/bi_camrest/CamRestOTGY.json'
+            self.db = './data/CamRest676/bi_camrest/CamRestDB.db'
+            if mode == 'train':
+                self.dataset_path = ['./data/CamRest676/en_camrest/']
+            elif mode == 'test':
+                self.dataset_path = ['./data/CamRest676/id_camrest/']
+        elif self.exp_setting == 'bi':
+            self.vocab_path = './data/CamRest676/bi_camrest/vocab'
+            self.dataset_path = ['./data/CamRest676/en_camrest/', './data/CamRest676/id_camrest/']
+            self.ontology_path = './data/CamRest676/bi_camrest/CamRestOTGY.json'
+            self.db = './data/CamRest676/bi_camrest/CamRestDB.db'
+        elif self.exp_setting == 'bi-en':
+            self.vocab_path = './data/CamRest676/bi_camrest/vocab'
+            self.ontology_path = './data/CamRest676/bi_camrest/CamRestOTGY.json'
+            self.db = './data/CamRest676/bi_camrest/CamRestDB.db'
+            if mode == 'train':
+                self.dataset_path = ['./data/CamRest676/en_camrest/', './data/CamRest676/id_camrest/']
+            elif mode == 'test':
+                self.dataset_path = ['./data/CamRest676/en_camrest/']
+        elif self.exp_setting == 'bi-id':
+            self.vocab_path = './data/CamRest676/bi_camrest/vocab'
+            self.ontology_path = './data/CamRest676/bi_camrest/CamRestOTGY.json'
+            self.db = './data/CamRest676/bi_camrest/CamRestDB.db'
+            if mode == 'train':
+                self.dataset_path = ['./data/CamRest676/en_camrest/', './data/CamRest676/id_camrest/']
+            elif mode == 'test':
+                self.dataset_path = ['./data/CamRest676/id_camrest/']
+
+        self.raw_data = ['./data/CamRest676/en_camrest/CamRest676.json', './data/CamRest676/id_camrest/CamRest676.json', './data/CamRest676/bi_camrest/CamRest676.json']
         self.glove_path = './data/glove/glove.6B.50d.txt'
         # self.glove_path = './data/paragram_300_sl999_v14294.pkl'
         self.save_log = True
@@ -87,8 +131,8 @@ class _Config:
         self.eval_z_method = 'prior'
 
         # model settings
-        self.vocab_size = 850
-        self.embed_size = 50
+        self.vocab_size = 1700
+        self.embed_size = 300
         self.hidden_size = 50
         self.layer_num = 1
         self.db_vec_size = 5
@@ -106,7 +150,8 @@ class _Config:
         self.use_act_slot_decoder = True
         self.dropout_st = True
         self.use_resp_dpout = True
-        self.glove_init = True
+        self.glove_init = False
+        self.fasttext_init = True
         self.changedp = True
 
         # SMC params
@@ -130,7 +175,7 @@ class _Config:
         self.rl_coef = 0.1
 
 
-    def _kvret_init(self):
+    def _kvret_init(self, exp_setting, mode):
         # experimental settings
         self.seed = 0
         self.cuda = True
@@ -178,7 +223,7 @@ class _Config:
 
         # model settings
         self.vocab_size = 1100
-        self.embed_size = 50
+        self.embed_size = 300
         self.hidden_size = 100
         self.layer_num = 1
         self.db_vec_size = 1
@@ -196,7 +241,8 @@ class _Config:
         self.use_act_slot_decoder = True
         self.dropout_st = True
         self.use_resp_dpout = False
-        self.glove_init = True
+        self.glove_init = False
+        self.fasttext_init = True
         self.changedp = False
 
         # SMC params

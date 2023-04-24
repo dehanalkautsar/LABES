@@ -389,6 +389,25 @@ class Model:
         self.model.embedding.weight.data.copy_(embedding_arr)
         if freeze:
             self.freeze_module(self.model.embedding)
+    
+    def load_fasttext_embedding(self, freeze=False, exp_setting='en'):
+        initial_arr = self.model.u_encoder.embedding.weight.data.cpu().numpy()
+        # if cfg.embed_size == 50:
+        #     glove_path = './data/glove/glove_multiwoz.6B.50d.txt'
+        if cfg.embed_size == 300:
+            if exp_setting=='en':
+                fasttext_path = './data/fasttext/cc.en.300.vec'
+            elif exp_setting=='id':
+                fasttext_path = './data/fasttext/cc.id.300.vec'
+            else:
+                fasttext_path = './data/fasttext/wiki.multi.id.vec'
+        else:
+            return
+        embedding_arr = self.reader.get_fasttext_matrix(fasttext_path, initial_arr)
+        embedding_arr = torch.from_numpy(embedding_arr)
+        self.model.embedding.weight.data.copy_(embedding_arr)
+        if freeze:
+            self.freeze_module(self.model.embedding)
 
     def count_params(self):
         module_parameters = filter(lambda p: p.requires_grad, self.model.parameters())
@@ -425,6 +444,7 @@ def main():
     parser.add_argument('-mode')
     parser.add_argument('-method')
     parser.add_argument('-dataset')
+    parser.add_argument('-exp_setting')
     parser.add_argument('-cfg', nargs='*')
     args = parser.parse_args()
 
@@ -433,15 +453,15 @@ def main():
     if not os.path.exists('log/'+args.dataset):
         os.mkdir('log/'+args.dataset)
 
-    cfg.mode, cfg.dataset, cfg.method = args.mode, args.dataset, args.method
-    cfg.init_handler(cfg.dataset)
+    cfg.mode, cfg.dataset, cfg.method, cfg.exp_setting = args.mode, args.dataset, args.method, args.exp_setting
+    cfg.init_handler(cfg.dataset, args.exp_setting, cfg.mode)
     if args.mode in ['test', 'adjust', 'rl_tune']:
         parse_arg_cfg(args)
         cfg_load = json.loads(open(os.path.join(cfg.eval_load_path, 'config.json'), 'r').read())
         for k, v in cfg_load.items():
             if k in ['mode', 'cuda', 'cuda_device', 'eval_load_path', 'log_time', 'model_path',
                         'result_path', 'model_parameters', 'beam_search', 'skip_unsup', 'sup_pretrain',
-                        'lr', 'valid_type', 'seed', 'max_epoch']:
+                        'lr', 'valid_type', 'seed', 'max_epoch', 'exp_setting', 'dataset_path']:
                 continue
             setattr(cfg, k, v)
             cfg.model_path = os.path.join(cfg.eval_load_path, 'model.pkl')
@@ -486,6 +506,8 @@ def main():
                 json.dump(cfg.__dict__, f, indent=2)
         if cfg.glove_init:
             m.load_glove_embedding(freeze=cfg.freeze_emb)
+        elif cfg.fasttext_init:
+            m.load_fasttext_embedding(freeze=cfg.freeze_emb, exp_setting=args.exp_setting)
         if unsup_prop>0:
             m.train(pretrain=True)
             logging.info('Start semi-supervised training')
